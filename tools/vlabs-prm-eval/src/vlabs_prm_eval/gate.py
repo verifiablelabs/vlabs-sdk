@@ -1,7 +1,7 @@
 """Eval-card → ``ModelMetrics`` mapping + gate evaluator.
 
 The 7-condition ``AcceptUpdate`` predicate itself lives in
-``verifiable_labs_envs.formal_spec.gate`` (machine-verified in Lean).
+``vlabs_sdk.formal_spec.gate`` (machine-verified in Lean).
 This module only handles the schema bridge from a process-reward-model
 eval card (JSON dict) to ``ModelMetrics`` and the user-facing rendering.
 
@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from verifiable_labs_envs.formal_spec.gate import (
+from vlabs_sdk.formal_spec.gate import (
     GateDecision,
     ModelMetrics,
     Tolerances,

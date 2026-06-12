@@ -6,7 +6,7 @@ Current commands:
   cards (old / new), maps each onto ``ModelMetrics``, evaluates the
   7-condition ``AcceptUpdate`` predicate from
   ``formal/VerifiableLabsFormal/SelfImprovementGate.lean`` via the
-  Python mirror in ``verifiable_labs_envs.formal_spec.gate``, and exits
+  Python mirror in ``vlabs_sdk.formal_spec.gate``, and exits
   0/1 accordingly.
 
 The PRM eval-card schema is defined in ``vlabs_prm_eval.gate`` (see

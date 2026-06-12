@@ -9,8 +9,8 @@ must respect them).
 The functions in this module are intentionally minimal — they mirror
 the *mathematical specification*, not the production calibration or
 routing implementations in
-``src/verifiable_labs_envs/process_reward/calibration.py`` and
-``src/verifiable_labs_envs/training/adaptive_difficulty.py``. Property
+``src/vlabs_sdk/process_reward/calibration.py`` and
+``src/vlabs_sdk/training/adaptive_difficulty.py``. Property
 tests in ``tests/formal_spec/`` exercise these mirrors against the
 Lean-proved invariants.
 """

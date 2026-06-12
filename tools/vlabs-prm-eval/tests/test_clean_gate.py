@@ -7,7 +7,7 @@ fixture that exercises the missing-field warnings path).
 
 The mapping fixture → expected reason mirrors the field order in
 ``formal/VerifiableLabsFormal/CleanPromotionGate.lean``; if either the Lean spec
-or the Python mirror in ``verifiable_labs_envs.formal_spec.clean_promotion_gate``
+or the Python mirror in ``vlabs_sdk.formal_spec.clean_promotion_gate``
 changes, these tests catch drift.
 """
 
@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
-from verifiable_labs_envs.formal_spec.clean_promotion_gate import (
+from vlabs_sdk.formal_spec.clean_promotion_gate import (
     REASON_CALIBRATION_REGRESSED,
     REASON_CLEAN_VGS_NOT_IMPROVED,
     REASON_COST_INCREASED,

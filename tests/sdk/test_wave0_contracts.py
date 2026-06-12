@@ -5,14 +5,14 @@ from __future__ import annotations
 
 import pytest
 
-from verifiable_labs_envs.providers import (
+from vlabs_sdk.providers import (
     AuthMode,
     DummyProvider,
     ModelRequest,
     ProviderConfig,
 )
-from verifiable_labs_envs.run_config import Mode, RunConfig, default_config
-from verifiable_labs_envs.schemas import (
+from vlabs_sdk.run_config import Mode, RunConfig, default_config
+from vlabs_sdk.schemas import (
     FORMAL_CLAIM,
     AssuranceCardV2,
     EvaluationContract,
@@ -25,7 +25,7 @@ from verifiable_labs_envs.schemas import (
     TransferMetrics,
     validate_split_policy,
 )
-from verifiable_labs_envs.schemas.assurance_card import FORBIDDEN_CLAIMS
+from vlabs_sdk.schemas.assurance_card import FORBIDDEN_CLAIMS
 
 
 # ── run config: privacy-preserving defaults ──

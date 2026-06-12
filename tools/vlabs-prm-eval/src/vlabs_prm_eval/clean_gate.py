@@ -1,7 +1,7 @@
 """Eval-card → ``CleanMetrics`` mapping + clean-gate evaluator.
 
 The eight-condition ``CleanAcceptUpdate`` predicate itself lives in
-``verifiable_labs_envs.formal_spec.clean_promotion_gate`` (machine-verified in
+``vlabs_sdk.formal_spec.clean_promotion_gate`` (machine-verified in
 Lean 4, namespace ``Verifiable.CleanPromotionGate``). This module only handles
 the schema bridge from a process-reward-model eval card (JSON dict) to
 ``CleanMetrics`` and the user-facing rendering — mirroring ``gate.py``.
@@ -35,13 +35,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from verifiable_labs_envs.formal_spec.clean_promotion_gate import (
+from vlabs_sdk.formal_spec.clean_promotion_gate import (
     CleanGateDecision,
     CleanMetrics,
     CleanTolerances,
     accept_clean_update,
 )
-from verifiable_labs_envs.formal_spec.clean_vgs import clean_vgs as compute_clean_vgs
+from vlabs_sdk.formal_spec.clean_vgs import clean_vgs as compute_clean_vgs
 
 # ---------------------------------------------------------------------
 # Default eval-card → CleanMetrics field aliases + fallbacks

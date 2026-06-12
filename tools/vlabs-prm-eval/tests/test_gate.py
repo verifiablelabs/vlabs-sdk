@@ -7,7 +7,7 @@ Each fixture is hand-crafted to trigger exactly one of the seven Lean
 The mapping fixture → expected reason mirrors the field order in
 ``formal/VerifiableLabsFormal/SelfImprovementGate.lean``; if either the
 Lean spec or the Python mirror in
-``verifiable_labs_envs.formal_spec.gate`` changes, these tests will
+``vlabs_sdk.formal_spec.gate`` changes, these tests will
 catch drift.
 """
 
@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
-from verifiable_labs_envs.formal_spec.gate import (
+from vlabs_sdk.formal_spec.gate import (
     REASON_CALIBRATION_DROPPED,
     REASON_COST_EXCEEDED,
     REASON_HACK_RISK_EXCEEDED,

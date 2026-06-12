@@ -31,7 +31,7 @@ dependencies = [
     # The gate subcommand reuses the formally-verified Python mirror
     # of AcceptUpdate from the main package; pin loosely so dev installs
     # work against the editable monorepo checkout.
-    "verifiable-labs-envs",
+    "vlabs-sdk",
 ]
 
 [project.optional-dependencies]
@@ -41,7 +41,7 @@ dev = [
 ]
 
 [project.scripts]
-vlabs-prm-eval = "vlabs_prm_eval.cli:app"
+vlabs = "vlabs_prm_eval.cli:app"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/vlabs_prm_eval"]
