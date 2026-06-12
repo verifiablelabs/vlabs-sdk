@@ -6,7 +6,7 @@ SDK contracts for the Verifiable Labs platform: run configuration, the
 model-provider interface, and the typed schemas that evaluation contracts,
 score sets, gate outcomes, and assurance cards are built from.
 
-**Status: pointer repository.** The implementation currently lives in
+**Status: initial code import (mirror).** The implementation currently lives in
 [verifiable-labs-envs](https://github.com/verifiablelabs/verifiable-labs-envs)
 and will move here only when the split can be done without destabilizing
 the working implementation.

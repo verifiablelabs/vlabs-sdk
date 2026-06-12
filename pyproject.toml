@@ -1,0 +1,26 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "vlabs-sdk"
+version = "0.0.1"
+description = "SDK contracts for Verifiable Labs: run modes, provider interface, schemas, formal-spec mirror."
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "hypothesis>=6.100", "ruff>=0.6"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/verifiable_labs_envs"]
+
+[tool.pytest.ini_options]
+addopts = "-q --strict-markers --import-mode=importlib"
+testpaths = ["tests", "tools/vlabs-prm-eval/tests"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tools/vlabs-prm-eval/src"]
