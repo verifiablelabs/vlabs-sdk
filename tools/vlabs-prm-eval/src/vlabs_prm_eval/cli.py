@@ -17,8 +17,8 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
-from verifiable_labs_envs.formal_spec.clean_promotion_gate import CleanTolerances
-from verifiable_labs_envs.formal_spec.gate import Tolerances
+from vlabs_sdk.formal_spec.clean_promotion_gate import CleanTolerances
+from vlabs_sdk.formal_spec.gate import Tolerances
 
 from .clean_gate import evaluate_clean_gate
 from .gate import evaluate_gate

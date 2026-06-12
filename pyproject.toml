@@ -12,10 +12,10 @@ requires-python = ">=3.11"
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "hypothesis>=6.100", "ruff>=0.6"]
+dev = ["pytest>=8", "hypothesis>=6.100", "ruff>=0.6", "typer>=0.12"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/verifiable_labs_envs"]
+packages = ["src/vlabs_sdk"]
 
 [tool.pytest.ini_options]
 addopts = "-q --strict-markers --import-mode=importlib"

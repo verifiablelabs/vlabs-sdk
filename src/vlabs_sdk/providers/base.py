@@ -2,7 +2,7 @@
 
 Every agent/model backend implements :class:`ModelProvider`. The open-source
 SDK ships only this interface plus the deterministic
-:class:`~verifiable_labs_envs.providers.dummy_provider.DummyProvider`; real
+:class:`~vlabs_sdk.providers.dummy_provider.DummyProvider`; real
 backends (OpenAI/Anthropic/Google/OpenRouter/custom/self-hosted) live in the
 private platform because they carry key-handling, SSRF, and billing concerns.
 
