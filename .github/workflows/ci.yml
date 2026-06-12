@@ -9,7 +9,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
-      - run: pip install -e ".[dev]" && pip install -e tools/vlabs-prm-eval
+      - name: install (editable SDK must win over the PyPI envs package
+          that vlabs-prm-eval's dependency pulls in)
+        run: |
+          pip install -e tools/vlabs-prm-eval
+          pip uninstall -y verifiable-labs-envs
+          pip install -e ".[dev]"
       - run: ruff check src tests tools/vlabs-prm-eval/src
       - run: pytest
       - name: clean-gate CLI smoke (accept=0 / reject=1)
