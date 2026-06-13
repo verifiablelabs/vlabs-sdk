@@ -6,4 +6,4 @@ monorepo (see PROVENANCE.md) with the import namespace remapped from
 ``vlabs_sdk`` to ``vlabs_sdk``; see MIGRATION.md.
 """
 
-__version__ = "0.0.1"
+__version__ = "0.0.2"
