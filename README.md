@@ -30,13 +30,19 @@ Migrating from the legacy `verifiable-labs-envs` package? See
 
 ## clean-gate CLI
 
-```bash
-pip install typer
-pip install --no-deps "vlabs-prm-eval @ git+https://github.com/verifiablelabs/vlabs-sdk@main#subdirectory=tools/vlabs-prm-eval"
+The `vlabs` CLI ships **with** the `vlabs-sdk` distribution — no extra
+install:
 
+```bash
+pip install vlabs-sdk
+vlabs --help
 vlabs clean-gate --old baseline.json --new candidate.json
 # exit 0 = ACCEPT, exit 1 = REJECT (reasons printed)
 ```
+
+The CLI is implemented in the bundled `vlabs_prm_eval` package (depends
+only on `vlabs_sdk` + `typer`); both import packages are included in the
+wheel.
 
 ## What ships here
 
