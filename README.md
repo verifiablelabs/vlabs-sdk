@@ -58,6 +58,14 @@ This repository is a mirror of the canonical monorepo with the import
 namespace remapped (see [PROVENANCE.md](PROVENANCE.md)); it becomes
 canonical at split-flip time.
 
+## Evidence
+
+Public, **synthetic / redacted** demo evidence — assurance cards, aggregate
+metrics, and sanitized export manifests — lives in
+[vlabs-evidence](https://github.com/verifiablelabs/vlabs-evidence) and on
+Hugging Face: <https://huggingface.co/datasets/verifiablelabs/vlabs-clean-gate-evidence>. Not a training dataset; no customer data, hidden
+evals, gold answers, raw traces, private traps, or private engine internals.
+
 ## Formal scope
 
 Selected mathematical properties behind the contamination-resistant
