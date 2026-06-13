@@ -8,7 +8,7 @@ evaluates the seven-condition checkpoint-promotion gate from
 against a pair of eval cards (old vs candidate) and exits `0` on **ACCEPT**
 or `1` on **REJECT**. The gate predicate itself is machine-verified in Lean 4
 (`accepted_sequence_mono_VGS`, `accepted_sequence_VGS_lower_bound`) and
-mirrored in Python under `verifiable_labs_envs.formal_spec.gate`; this CLI
+mirrored in Python under `vlabs_sdk.formal_spec.gate`; this CLI
 adds only the eval-card → `ModelMetrics` schema bridge and a user-facing
 report.
 
@@ -82,7 +82,7 @@ All fields except `model_id` are optional. Missing numeric fields default to
 defaults to `0.0` and a `WARNING:` line is emitted on stderr noting that
 the gate cannot detect shortcut-taking without that field. Run
 `vlabs-prm-eval`'s invariance harness (see
-`verifiable_labs_envs.formal_spec.invariance.check_invariance`) to populate
+`vlabs_sdk.formal_spec.invariance.check_invariance`) to populate
 it.
 
 ### Eval-card → `ModelMetrics` mapping
@@ -125,7 +125,7 @@ To override the weights or thresholds, pass a `--metrics-map <map.json>`:
 followed by a per-condition table with the old and new values, the budget,
 and an `OK`/`!!` marker (ASCII-only for cross-platform stdout safety).
 On reject, the canonical reason names from
-`verifiable_labs_envs.formal_spec.gate` are listed:
+`vlabs_sdk.formal_spec.gate` are listed:
 
 ```text
 == REJECT ==

@@ -22,5 +22,14 @@ jobs:
           cd tools/vlabs-prm-eval
           vlabs clean-gate --old tests/fixtures/clean/clean_old.json --new tests/fixtures/clean/clean_new_accept.json
           if vlabs clean-gate --old tests/fixtures/clean/clean_old.json --new tests/fixtures/clean/clean_reject_dcr.json; then exit 1; fi
-      - name: build wheel
-        run: pip install build && python -m build --wheel
+      - name: build wheel + sdist
+        run: pip install build && python -m build
+      - name: built-wheel CLI smoke in a clean venv (Option A — vlabs ships with vlabs-sdk)
+        run: |
+          python -m venv /tmp/wv
+          /tmp/wv/bin/pip install dist/*.whl
+          /tmp/wv/bin/python -c "import vlabs_sdk; import vlabs_prm_eval; from vlabs_sdk.providers.dummy_provider import DummyProvider"
+          /tmp/wv/bin/vlabs --help
+          cd tools/vlabs-prm-eval
+          /tmp/wv/bin/vlabs clean-gate --old tests/fixtures/clean/clean_old.json --new tests/fixtures/clean/clean_new_accept.json
+          if /tmp/wv/bin/vlabs clean-gate --old tests/fixtures/clean/clean_old.json --new tests/fixtures/clean/clean_reject_dcr.json; then exit 1; fi

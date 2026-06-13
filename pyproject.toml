@@ -5,17 +5,62 @@ build-backend = "hatchling.build"
 [project]
 name = "vlabs-sdk"
 version = "0.0.1"
-description = "SDK contracts for Verifiable Labs: run modes, provider interface, schemas, formal-spec mirror."
+description = "SDK contracts and clean promotion-gate CLI for Verifiable Labs: run modes, model-provider interface, typed schemas, and a property-tested formal-spec mirror."
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.11"
-dependencies = []
+authors = [
+    { name = "Stelios Zacharioudakis", email = "sdi2200243@di.uoa.gr" },
+]
+keywords = [
+    "verifiable-labs",
+    "ai-agents",
+    "evaluation",
+    "promotion-gate",
+    "contamination-resistant",
+    "generalization",
+    "formal-specification",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Quality Assurance",
+    "Typing :: Typed",
+]
+# typer is a runtime dependency: the bundled `vlabs` clean-gate CLI uses it.
+dependencies = ["typer>=0.12"]
+
+[project.urls]
+Homepage = "https://verifiable-labs.com"
+Repository = "https://github.com/verifiablelabs/vlabs-sdk"
+Issues = "https://github.com/verifiablelabs/vlabs-sdk/issues"
+
+[project.scripts]
+# The clean promotion-gate CLI ships with the SDK distribution; after
+# `pip install vlabs-sdk`, `vlabs --help` works with no extra install.
+vlabs = "vlabs_prm_eval.cli:app"
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "hypothesis>=6.100", "ruff>=0.6", "typer>=0.12"]
+dev = ["pytest>=8", "hypothesis>=6.100", "ruff>=0.6", "build>=1.2"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/vlabs_sdk"]
+
+# Bundle the public clean-gate CLI package (vlabs_prm_eval) into the wheel
+# from the sibling tool tree so the `vlabs` entry point resolves without a
+# separate install. It depends only on vlabs_sdk + typer + stdlib.
+[tool.hatch.build.targets.wheel.force-include]
+"tools/vlabs-prm-eval/src/vlabs_prm_eval" = "vlabs_prm_eval"
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "tools", "tests", "conftest.py", "LICENSE", "README.md", "MIGRATION.md", "PROVENANCE.md", "pyproject.toml"]
 
 [tool.pytest.ini_options]
 addopts = "-q --strict-markers --import-mode=importlib"
