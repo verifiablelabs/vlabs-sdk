@@ -13,8 +13,7 @@ score sets, gate outcomes, and assurance cards are built from.
 ## Install
 
 ```bash
-pip install vlabs-sdk        # once published; until then:
-pip install "vlabs-sdk @ git+https://github.com/verifiablelabs/vlabs-sdk@main"
+pip install vlabs-sdk
 ```
 
 ```python
