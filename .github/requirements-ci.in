@@ -1,0 +1,7 @@
+build>=1.2
+editables==0.5
+hatchling==1.27.0
+hypothesis>=6.100
+pytest>=8
+ruff>=0.6
+typer>=0.12

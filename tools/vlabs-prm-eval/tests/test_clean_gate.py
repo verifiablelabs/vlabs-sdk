@@ -119,42 +119,130 @@ def test_each_reject_fixture_triggers_exactly_one_reason():
 
 
 # =====================================================================
-# Warnings path — card missing dcr / hack_risk / calibration
+# Fail-closed schema bridge
 # =====================================================================
-def test_clean_gate_warns_on_missing_fields():
-    """A card missing dcr/hack_risk/calibration emits warnings and still maps."""
-    decision, _old, _new, warnings = evaluate_clean_gate(
-        OLD, FIXTURES / "clean_new_warnings.json", CleanTolerances(), beta=0.5
-    )
-    joined = " ".join(warnings)
-    assert "contamination-risk" in joined
-    assert "hack_risk" in joined
-    assert "calibration" in joined
-    assert len(warnings) == 3
-    # The decision still resolves (defaults applied), here an accept.
-    assert decision.accepted is True
+def test_clean_gate_rejects_missing_safety_metrics():
+    """A promotion gate must not replace missing safety evidence with ideal values."""
+    with pytest.raises(ValueError, match="missing required clean-gate fields"):
+        evaluate_clean_gate(
+            OLD, FIXTURES / "clean_new_warnings.json", CleanTolerances(), beta=0.5
+        )
 
 
-def test_clean_gate_cli_emits_warnings_to_stderr():
+def test_clean_gate_cli_fails_on_missing_safety_metrics():
     result = _runner().invoke(
         app,
         ["clean-gate", "--old", str(OLD), "--new", str(FIXTURES / "clean_new_warnings.json")],
     )
-    # Warnings go to stderr; mix=False keeps them separate. CliRunner merges by
-    # default, so assert the WARNING text appears in the combined output.
-    assert "WARNING" in result.output
+    assert result.exit_code == 2
+    assert "INCONCLUSIVE" in result.stdout
+    assert "missing required clean-gate fields" in result.stdout
+    assert "ACCEPT" not in result.stdout
 
 
-def test_card_to_clean_metrics_computes_clean_vgs_when_absent():
-    """If clean_vgs is absent the bridge computes it via the verified formula."""
-    card = CleanEvalCard.load(FIXTURES / "clean_new_warnings.json")
+def test_card_to_clean_metrics_recomputes_supplied_clean_vgs():
+    """The formal formula, not a caller-controlled derived field, is authoritative."""
+    card = CleanEvalCard(
+        {
+            "vgs": 0.8,
+            "dcr": 0.1,
+            "clean_vgs": 999.0,
+            "ood_score": 0.7,
+            "hack_risk": 0.1,
+            "calibration": 0.9,
+            "cost": 1.0,
+            "latency": 1.0,
+        }
+    )
     metrics, report = card_to_clean_metrics(card, beta=0.5)
-    # vgs=0.80, dcr default 0.0 -> clean_vgs = 0.80*(1-0) - 0.5*0 = 0.80
-    assert metrics.clean_vgs == pytest.approx(0.80, abs=1e-9)
-    assert metrics.dcr == 0.0
-    assert metrics.hack_risk == 0.0
-    assert metrics.calibration == 1.0
-    assert len(report.warnings) == 3
+    assert metrics.clean_vgs == pytest.approx(0.67, abs=1e-9)
+    assert any("ignored" in warning and "clean_vgs" in warning for warning in report.warnings)
+
+
+@pytest.mark.parametrize(
+    "aliases",
+    [
+        {"vgs": 0.8, "composite": 0.7},
+        {"contamination_risk": 0.1, "dcr": 0.2},
+    ],
+)
+def test_clean_gate_rejects_conflicting_alias_values(aliases):
+    raw = {
+        "vgs": 0.8,
+        "dcr": 0.1,
+        "ood_score": 0.7,
+        "hack_risk": 0.1,
+        "calibration": 0.9,
+        "cost": 1.0,
+        "latency": 1.0,
+        **aliases,
+    }
+
+    with pytest.raises(ValueError, match="conflicting aliases"):
+        card_to_clean_metrics(CleanEvalCard(raw), beta=0.5)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("vgs", -0.01),
+        ("vgs", 1.01),
+        ("dcr", -0.01),
+        ("dcr", 1.01),
+        ("ood_score", 1.01),
+        ("hack_risk", -0.01),
+        ("calibration", 1.01),
+    ],
+)
+def test_card_to_clean_metrics_enforces_documented_unit_ranges(field, value):
+    raw = {
+        "vgs": 0.8,
+        "dcr": 0.1,
+        "ood_score": 0.7,
+        "hack_risk": 0.1,
+        "calibration": 0.9,
+        "cost": 1.0,
+        "latency": 1.0,
+    }
+    raw[field] = value
+    with pytest.raises(ValueError, match=r"must be in \[0, 1\]"):
+        card_to_clean_metrics(CleanEvalCard(raw), beta=0.5)
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        {"unknown_policy_key": []},
+        {"raw_vgs_keys": "vgs"},
+        {"raw_vgs_keys": []},
+        {"raw_vgs_keys": ["vgs", "vgs"]},
+        {"dcr_keys": ["dcr", 7]},
+        {"dcr_default": float("nan")},
+        {"cost_default": -1.0},
+    ],
+)
+def test_clean_metrics_map_rejects_unknown_or_ill_typed_policy(override):
+    with pytest.raises(ValueError, match="metrics map|_keys|_default"):
+        card_to_clean_metrics(CleanEvalCard.load(OLD), beta=0.5, metrics_map=override)
+
+
+def test_clean_metrics_map_cli_malformed_policy_is_inconclusive(tmp_path):
+    import json
+
+    map_path = tmp_path / "bad-clean-map.json"
+    map_path.write_text(json.dumps({"hack_risk_keys": "hack_risk"}))
+    result = _runner().invoke(
+        app,
+        [
+            "clean-gate",
+            "--old", str(OLD),
+            "--new", str(FIXTURES / "clean_new_accept.json"),
+            "--metrics-map", str(map_path),
+        ],
+    )
+    assert result.exit_code == 2
+    assert "INCONCLUSIVE" in result.stdout
+    assert "ACCEPT" not in result.stdout
 
 
 # =====================================================================

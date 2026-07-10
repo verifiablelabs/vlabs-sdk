@@ -11,15 +11,15 @@ Eval-card schema (canonical fields, all optional unless noted):
     {
       "model_id":                  "<str, required>",
       "vgs" | "composite":         <float in [0,1]>,        # raw_vgs
-      "contamination_risk" | "dcr":<float in [0,1]>,        # dcr (else 0.0, WARN)
-      "clean_vgs":                 <float>,                  # else computed
+      "contamination_risk" | "dcr":<float in [0,1]>,        # required
+      "clean_vgs":                 <float>,                  # advisory; recomputed
       "public_score":              <float in [0,1]>,
       "hidden_score":              <float in [0,1]>,
       "ood_score":                 <float in [0,1]>,
-      "hack_risk":                 <float>,                  # else 0.0, WARN
-      "calibration":               <float in [0,1]>,         # else 1.0, WARN
-      "cost":                      <float, $ per audit>,
-      "latency":                   <float, seconds per audit>,
+      "hack_risk":                 <float in [0,1]>,         # required
+      "calibration":               <float in [0,1]>,         # required
+      "cost":                      <float, $ per audit>,      # required or CLI override
+      "latency":                   <float, seconds per audit>,# required or CLI override
       "regression":                <bool>                    # else derived
     }
 
@@ -30,6 +30,7 @@ flag (a JSON object overriding the default field names / fallbacks).
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -59,7 +60,8 @@ DEFAULT_METRICS_MAP: dict[str, Any] = {
     "cost_keys": ["cost"],
     "latency_keys": ["latency"],
     "regression_keys": ["regression"],
-    # Fallback values when absent.
+    # Retained for config-file compatibility only. Gate-critical metrics no
+    # longer use optimistic defaults; missing evidence fails closed.
     "dcr_default": 0.0,
     "hack_risk_default": 0.0,
     "calibration_default": 1.0,
@@ -85,10 +87,25 @@ class CleanEvalCard:
         return cls(raw=data)
 
     def first(self, keys: list[str]) -> tuple[str | None, Any]:
-        for k in keys:
-            if k in self.raw and self.raw[k] is not None:
-                return k, self.raw[k]
-        return None, None
+        present = [
+            (key, self.raw[key])
+            for key in keys
+            if key in self.raw and self.raw[key] is not None
+        ]
+        if not present:
+            return None, None
+        first_key, first_value = present[0]
+        conflicting = [
+            key
+            for key, value in present[1:]
+            if type(value) is not type(first_value) or value != first_value
+        ]
+        if conflicting:
+            raise ValueError(
+                "conflicting aliases supplied for one clean-gate metric: "
+                + ", ".join([first_key, *conflicting])
+            )
+        return first_key, first_value
 
 
 @dataclass(frozen=True)
@@ -101,7 +118,65 @@ class CleanMappingReport:
 def _to_float(name: str, value: Any) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError(f"{name}: expected number, got {value!r}")
-    return float(value)
+    result = float(value)
+    if not math.isfinite(result):
+        raise ValueError(f"{name}: expected a finite number")
+    return result
+
+
+def _to_unit_float(name: str, value: Any) -> float:
+    result = _to_float(name, value)
+    if not 0.0 <= result <= 1.0:
+        raise ValueError(f"{name} must be in [0, 1], got {result!r}")
+    return result
+
+
+def _to_nonnegative_float(name: str, value: Any) -> float:
+    result = _to_float(name, value)
+    if result < 0.0:
+        raise ValueError(f"{name}: expected a non-negative value")
+    return result
+
+
+_ALIAS_POLICY_KEYS = frozenset(
+    key for key in DEFAULT_METRICS_MAP if key.endswith("_keys")
+)
+_UNIT_DEFAULT_KEYS = frozenset(
+    {"dcr_default", "hack_risk_default", "calibration_default"}
+)
+_NONNEGATIVE_DEFAULT_KEYS = frozenset({"cost_default", "latency_default"})
+_CLEAN_MAP_KEYS = _ALIAS_POLICY_KEYS | _UNIT_DEFAULT_KEYS | _NONNEGATIVE_DEFAULT_KEYS
+
+
+def _validated_metrics_map(
+    metrics_map: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    if metrics_map is not None and not isinstance(metrics_map, Mapping):
+        raise ValueError("metrics map: expected a JSON object")
+    override = dict(metrics_map or {})
+    unknown = set(override) - _CLEAN_MAP_KEYS
+    if unknown:
+        raise ValueError(f"metrics map: unknown keys {sorted(unknown)!r}")
+
+    resolved = dict(DEFAULT_METRICS_MAP)
+    resolved.update(override)
+    for key in sorted(_ALIAS_POLICY_KEYS):
+        aliases = resolved[key]
+        if (
+            not isinstance(aliases, list)
+            or not 1 <= len(aliases) <= 32
+            or any(not isinstance(alias, str) or not alias.strip() for alias in aliases)
+            or len(set(aliases)) != len(aliases)
+        ):
+            raise ValueError(
+                f"{key}: expected 1..32 distinct non-empty string aliases"
+            )
+        resolved[key] = list(aliases)
+    for key in sorted(_UNIT_DEFAULT_KEYS):
+        resolved[key] = _to_unit_float(key, resolved[key])
+    for key in sorted(_NONNEGATIVE_DEFAULT_KEYS):
+        resolved[key] = _to_nonnegative_float(key, resolved[key])
+    return resolved
 
 
 def card_to_clean_metrics(
@@ -114,19 +189,37 @@ def card_to_clean_metrics(
 ) -> tuple[CleanMetrics, CleanMappingReport]:
     """Map an eval card onto ``CleanMetrics``.
 
-    Returns the metrics plus a report of any warnings (e.g. a missing
-    contamination-risk / hack-risk / calibration field that fell back to a
-    default). Raises ``ValueError`` on hard schema errors.
+    Returns the metrics plus a report of any compatibility warnings. Missing
+    gate-critical evidence fails closed with ``ValueError``.
 
-    The contamination-adjusted ``clean_vgs`` is taken from the card when
-    present; otherwise it is computed from ``raw_vgs``, ``dcr`` and ``beta`` via
-    the machine-verified formula ``clean_vgs = raw_vgs*(1-dcr) - beta*dcr``.
+    ``clean_vgs`` is always recomputed from ``raw_vgs``, ``dcr`` and ``beta``
+    via the machine-verified formula
+    ``clean_vgs = raw_vgs*(1-dcr) - beta*dcr``. A legacy caller-supplied value
+    is ignored and reported when it differs from the canonical result.
     """
-    m = dict(DEFAULT_METRICS_MAP)
-    if metrics_map is not None:
-        m = {**m, **metrics_map}
+    m = _validated_metrics_map(metrics_map)
 
     warnings: list[str] = []
+
+    required_aliases = {
+        "contamination-risk": "dcr_keys",
+        "ood_score": "ood_score_keys",
+        "hack_risk": "hack_risk_keys",
+        "calibration": "calibration_keys",
+    }
+    missing = [
+        label
+        for label, aliases_key in required_aliases.items()
+        if card.first(m[aliases_key])[0] is None
+    ]
+    if cost_override is None and card.first(m["cost_keys"])[0] is None:
+        missing.append("cost")
+    if latency_override is None and card.first(m["latency_keys"])[0] is None:
+        missing.append("latency")
+    if missing:
+        raise ValueError(
+            "missing required clean-gate fields: " + ", ".join(sorted(missing))
+        )
 
     # ---- raw_vgs ----
     key, val = card.first(m["raw_vgs_keys"])
@@ -134,71 +227,56 @@ def card_to_clean_metrics(
         raise ValueError(
             f"card has none of {m['raw_vgs_keys']!r}; cannot derive raw_vgs."
         )
-    raw_vgs = _to_float("raw_vgs", val)
+    raw_vgs = _to_unit_float("raw_vgs", val)
 
     # ---- dcr ----
     key, val = card.first(m["dcr_keys"])
-    if key is None:
-        warnings.append(
-            f"card has no contamination-risk field {m['dcr_keys']!r}; "
-            f"using dcr={m['dcr_default']}. The clean gate cannot penalise "
-            "contamination without it."
-        )
-        dcr = float(m["dcr_default"])
-    else:
-        dcr = _to_float("dcr", val)
+    assert key is not None  # checked with the other required fields above
+    dcr = _to_unit_float("dcr", val)
 
     # ---- clean_vgs (card value, else computed) ----
+    clean_vgs_value = compute_clean_vgs(raw_vgs, dcr, beta)
     key, val = card.first(m["clean_vgs_keys"])
-    if key is None:
-        clean_vgs_value = compute_clean_vgs(raw_vgs, dcr, beta)
-    else:
-        clean_vgs_value = _to_float("clean_vgs", val)
+    if key is not None:
+        supplied_clean_vgs = _to_float("clean_vgs", val)
+        if not abs(supplied_clean_vgs - clean_vgs_value) <= 1e-9:
+            warnings.append(
+                "ignored caller-supplied clean_vgs because it differs from "
+                "the canonical raw_vgs/dcr/beta computation"
+            )
 
     # ---- public / hidden / ood scores ----
     _, pub = card.first(m["public_score_keys"])
-    public_score = _to_float("public_score", pub) if pub is not None else 0.0
+    public_score = _to_unit_float("public_score", pub) if pub is not None else 0.0
     _, hid = card.first(m["hidden_score_keys"])
-    hidden_score = _to_float("hidden_score", hid) if hid is not None else 0.0
+    hidden_score = _to_unit_float("hidden_score", hid) if hid is not None else 0.0
     _, ood = card.first(m["ood_score_keys"])
-    ood_score = _to_float("ood_score", ood) if ood is not None else 0.0
+    assert ood is not None  # required-field check above
+    ood_score = _to_unit_float("ood_score", ood)
 
     # ---- hack_risk ----
     key, val = card.first(m["hack_risk_keys"])
-    if key is None:
-        warnings.append(
-            f"card has no hack_risk field {m['hack_risk_keys']!r}; using "
-            f"hack_risk={m['hack_risk_default']}. Run the invariance harness to "
-            "populate it; the gate cannot detect shortcuts without it."
-        )
-        hack_risk = float(m["hack_risk_default"])
-    else:
-        hack_risk = _to_float("hack_risk", val)
+    assert key is not None  # required-field check above
+    hack_risk = _to_unit_float("hack_risk", val)
 
     # ---- calibration ----
     key, val = card.first(m["calibration_keys"])
-    if key is None:
-        warnings.append(
-            f"card has no calibration field {m['calibration_keys']!r}; using "
-            f"calibration={m['calibration_default']} (assumed nominal)."
-        )
-        calibration = float(m["calibration_default"])
-    else:
-        calibration = _to_float("calibration", val)
+    assert key is not None  # required-field check above
+    calibration = _to_unit_float("calibration", val)
 
     # ---- cost / latency ----
     if cost_override is not None:
         cost = cost_override
     else:
         key, val = card.first(m["cost_keys"])
-        cost = _to_float("cost", val) if key is not None else float(m["cost_default"])
+        assert key is not None  # required-field check above
+        cost = _to_float("cost", val)
     if latency_override is not None:
         latency = latency_override
     else:
         key, val = card.first(m["latency_keys"])
-        latency = (
-            _to_float("latency", val) if key is not None else float(m["latency_default"])
-        )
+        assert key is not None  # required-field check above
+        latency = _to_float("latency", val)
 
     # ---- regression (card value, else derived from contamination/calibration) ----
     key, val = card.first(m["regression_keys"])

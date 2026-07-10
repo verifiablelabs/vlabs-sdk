@@ -2,9 +2,10 @@
 
 Process-reward-model eval-card tooling for Verifiable Labs.
 
-Today the package ships a single command — **`vlabs-prm-eval gate`** — which
-evaluates the seven-condition checkpoint-promotion gate from
-[`formal/VerifiableLabsFormal/SelfImprovementGate.lean`](../../formal/VerifiableLabsFormal/SelfImprovementGate.lean)
+The SDK ships one **`vlabs`** executable with `gate` and `clean-gate`
+subcommands. `gate` evaluates the seven-condition checkpoint-promotion gate
+from
+[`SelfImprovementGate.lean`](https://github.com/verifiablelabs/vlabs-formal/blob/main/formal/VerifiableLabsFormal/SelfImprovementGate.lean)
 against a pair of eval cards (old vs candidate) and exits `0` on **ACCEPT**
 or `1` on **REJECT**. The gate predicate itself is machine-verified in Lean 4
 (`accepted_sequence_mono_VGS`, `accepted_sequence_VGS_lower_bound`) and
@@ -17,23 +18,25 @@ pattern but are intentionally out of scope here.
 
 ## Install
 
-From the monorepo root:
+Install the public SDK distribution:
 
 ```bash
-pip install -e tools/vlabs-prm-eval
+pip install vlabs-sdk
+vlabs --help
 ```
 
-The package depends on `verifiable-labs-envs` (for the verified gate predicate)
-and `typer`.
+For development from this checkout, `pip install -e .` installs the same
+bundled command. It depends on `vlabs_sdk` and `typer`; there is no legacy
+package dependency.
 
-## `vlabs-prm-eval gate`
+## `vlabs gate`
 
 ```text
-Usage: vlabs-prm-eval gate [OPTIONS]
+Usage: vlabs gate [OPTIONS]
 
   Evaluate the 7-condition checkpoint promotion gate
   (SelfImprovementGate.lean) against two eval cards. Exit 0 on ACCEPT,
-  1 on REJECT.
+  1 on REJECT, and 2 when required evidence is missing/invalid.
 
 Options:
   -O, --old PATH           Path to the previous-checkpoint eval card (JSON).
@@ -77,13 +80,21 @@ Options:
 }
 ```
 
-All fields except `model_id` are optional. Missing numeric fields default to
-`0.0`, except for `invariance_violation_rate`: when absent, `hack_risk`
-defaults to `0.0` and a `WARNING:` line is emitted on stderr noting that
-the gate cannot detect shortcut-taking without that field. Run
-`vlabs-prm-eval`'s invariance harness (see
+Every dimension used by the legacy gate is required: `processbench_overall`,
+`bon_accuracy`, `coverage`, `invariance_violation_rate`, cost, latency, and
+either `mean_held_out_env_metric` or a non-empty `held_out_envs` map. Cost and
+latency may instead be supplied through their explicit old/new CLI overrides.
+Missing/invalid evidence returns **INCONCLUSIVE** with exit code 2; the bridge
+never replaces missing safety, OOD, cost, or latency evidence with an optimistic
+zero. Unit-valued metrics are range/finite validated. Run the invariance harness (see
 `vlabs_sdk.formal_spec.invariance.check_invariance`) to populate
 it.
+
+The sibling clean gate validates its metrics-map boundary the same way: only
+documented alias/default keys are accepted; every alias list must contain 1..32
+distinct non-empty strings; numeric compatibility defaults must be finite and in
+their documented unit/non-negative ranges. Malformed cards or maps return
+**INCONCLUSIVE** (exit code `2`) rather than a traceback or promotion verdict.
 
 ### Eval-card → `ModelMetrics` mapping
 
@@ -94,7 +105,7 @@ The gate consumes `ModelMetrics` (`vgs`, `hack_risk`, `calibration`, `ood`,
 | `ModelMetrics` field | Source                                                                                    |
 |----------------------|-------------------------------------------------------------------------------------------|
 | `vgs`                | `0.40·processbench_overall + 0.30·mean_held_out_env_metric + 0.30·bon_accuracy`           |
-| `hack_risk`          | `invariance_violation_rate` (else 0.0 + stderr warning)                                   |
+| `hack_risk`          | required `invariance_violation_rate`; missing evidence is INCONCLUSIVE                    |
 | `calibration`        | `coverage`                                                                                |
 | `ood`                | `mean(held_out_envs.values())` if present, else `mean_held_out_env_metric`                |
 | `cost`               | `cost` (or `--cost-old` / `--cost-new` override)                                          |
@@ -119,9 +130,16 @@ To override the weights or thresholds, pass a `--metrics-map <map.json>`:
 }
 ```
 
+The map is a fail-closed policy input: it may contain only `vgs_weights` and
+`regression_rules`. Each nested object must contain exactly the documented keys;
+all values must be finite and in `[0, 1]`, and the three VGS weights must sum to
+`1.0` within `1e-9`. A missing, misspelled, negative, non-finite, extra, or
+unnormalized value returns **INCONCLUSIVE** (exit code `2`) instead of running a
+promotion decision under an ambiguous policy.
+
 ### Output
 
-`vlabs-prm-eval gate` prints an `== ACCEPT ==` / `== REJECT ==` header
+`vlabs gate` prints an `== ACCEPT ==` / `== REJECT ==` header
 followed by a per-condition table with the old and new values, the budget,
 and an `OK`/`!!` marker (ASCII-only for cross-platform stdout safety).
 On reject, the canonical reason names from
@@ -151,8 +169,20 @@ in the Phase 30.F/G checkpoint-promotion scripts.
 
 The `accept_update` predicate this CLI invokes is the Python mirror of the
 Lean 4 definition in
-[`formal/VerifiableLabsFormal/SelfImprovementGate.lean`](../../formal/VerifiableLabsFormal/SelfImprovementGate.lean),
+[`SelfImprovementGate.lean`](https://github.com/verifiablelabs/vlabs-formal/blob/main/formal/VerifiableLabsFormal/SelfImprovementGate.lean),
 machine-verified sorry-free under the three standard Lean axioms only
 (`propext`, `Classical.choice`, `Quot.sound`). The Python mirror is
 property-tested against the formal specification in
-`tests/formal_spec/test_gate_properties.py`.
+`vlabs-formal/tests/formal_spec/test_gate_properties.py`.
+
+## `vlabs clean-gate`
+
+The contamination-resistant eight-condition gate is the recommended public
+command. Gate-critical fields (`dcr`, `ood_score`, `hack_risk`, `calibration`,
+`cost`, and `latency`) are required; missing evidence is an error rather than
+an optimistic default. Unit-valued metrics must be in `[0, 1]`.
+
+`clean_vgs` is derived from `raw_vgs`, DCR, and `--beta` using the formal
+formula. A supplied `clean_vgs` is retained as a compatibility input only and
+cannot override the recomputed value. Full migration details are in the root
+[`MIGRATION.md`](../../MIGRATION.md).

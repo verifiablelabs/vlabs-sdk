@@ -16,7 +16,13 @@ No secrets, no hidden-eval content, no gold answers — schemas only.
 
 from __future__ import annotations
 
-from .assurance_card import FORMAL_CLAIM, AssuranceCardV2, GateDecisionLabel
+from .assurance_card import (
+    FORMAL_CLAIM,
+    AssuranceCardV2,
+    ContaminationPolicyLabel,
+    GateDecisionLabel,
+    RedactionStatusLabel,
+)
 from .contract import EvaluationContract, RiskTier
 from .results import GateOutcome, RunContext, ScoreSet, TransferMetrics
 from .splits import Split, SplitPolicyError, validate_split_policy
@@ -33,5 +39,7 @@ __all__ = [
     "RunContext",
     "AssuranceCardV2",
     "GateDecisionLabel",
+    "ContaminationPolicyLabel",
+    "RedactionStatusLabel",
     "FORMAL_CLAIM",
 ]

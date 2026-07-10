@@ -32,10 +32,30 @@ A project-wide rename is sufficient: every module under
 `verifiable_labs_envs.run_config` exists at the same path under
 `vlabs_sdk`. APIs are unchanged.
 
+## Unreleased `0.0.3` safety migration
+
+`vlabs clean-gate` now fails closed when a card omits any gate-critical
+measurement: DCR, OOD score, hack risk, calibration, cost, or latency (the CLI
+cost/latency overrides still satisfy those fields). Unit-valued measurements
+must be finite and within `[0, 1]`.
+
+The CLI now always derives `clean_vgs` from `raw_vgs`, DCR, and `--beta` using
+the formal formula. A legacy card-supplied `clean_vgs` is accepted for input
+compatibility but ignored, with a warning when it differs. Producers should
+either omit this derived field or emit the exact canonical value.
+
+Assurance Card v2 JSON is now the flat shape emitted by
+`AssuranceCardV2.to_dict()`. `AssuranceCardV2.from_dict()` remains able to read
+the earlier nested public examples (`scores`, `contamination`, and `gate`) so
+stored artifacts can be migrated without a flag day. Both shapes now validate
+strictly at the public boundary: booleans are JSON booleans (never truthy
+strings/numbers), score and resource fields are finite and bounded, decision /
+policy / redaction labels are enumerated, rejection reasons are `list[str]`,
+and metadata is a finite JSON object. Serialization uses `allow_nan=False` and
+revalidates metadata so a late mutation cannot emit non-standard JSON.
+
 ## What does NOT move
 
-The 25 RL environments, the trace schema, and the training stack stay in
-the legacy [`verifiable-labs-envs`](https://github.com/verifiablelabs/verifiable-labs-envs)
-package/repository (compatibility/legacy workspace). `vlabs-sdk` contains
-no environment implementations, no private engines, and depends on
-neither.
+The 25 historical RL environments, trace schema, and training stack are not
+part of `vlabs-sdk`. This package contains no environment implementations or
+private engines and has no dependency on the archived legacy workspace.
