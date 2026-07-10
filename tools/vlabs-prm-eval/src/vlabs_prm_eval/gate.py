@@ -26,6 +26,7 @@ via the CLI's ``--metrics-map <path>`` flag.
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -89,9 +90,90 @@ def _mean(values: list[float]) -> float:
 
 
 def _to_float(name: str, value: Any) -> float:
-    if not isinstance(value, (int, float)):
+    if type(value) not in (int, float):
         raise ValueError(f"{name}: expected number, got {value!r}")
-    return float(value)
+    result = float(value)
+    if not math.isfinite(result):
+        raise ValueError(f"{name}: expected a finite number")
+    return result
+
+
+def _required(card: EvalCard, name: str) -> Any:
+    value = card.get(name)
+    if value is None:
+        raise ValueError(f"missing required gate field: {name}")
+    return value
+
+
+def _to_unit_float(name: str, value: Any) -> float:
+    result = _to_float(name, value)
+    if not 0.0 <= result <= 1.0:
+        raise ValueError(f"{name}: expected a value in [0, 1]")
+    return result
+
+
+def _to_nonnegative_float(name: str, value: Any) -> float:
+    result = _to_float(name, value)
+    if result < 0.0:
+        raise ValueError(f"{name}: expected a non-negative value")
+    return result
+
+
+_WEIGHT_KEYS = frozenset(
+    {"processbench_overall", "mean_held_out_env_metric", "bon_accuracy"}
+)
+_REGRESSION_RULE_KEYS = frozenset(
+    {"processbench_min", "bon_lift_min", "coverage_target", "coverage_tol"}
+)
+_METRICS_MAP_KEYS = frozenset({"vgs_weights", "regression_rules"})
+
+
+def _exact_unit_mapping(
+    name: str, value: Any, expected_keys: frozenset[str]
+) -> dict[str, float]:
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{name}: expected an object")
+    actual_keys = set(value)
+    if actual_keys != expected_keys:
+        missing = sorted(expected_keys - actual_keys)
+        extra = sorted(actual_keys - expected_keys)
+        raise ValueError(
+            f"{name}: expected exactly {sorted(expected_keys)!r}; "
+            f"missing={missing!r}, extra={extra!r}"
+        )
+    return {
+        key: _to_unit_float(f"{name}.{key}", value[key])
+        for key in sorted(expected_keys)
+    }
+
+
+def _validated_metrics_map(
+    metrics_map: Mapping[str, Any] | None,
+) -> dict[str, dict[str, float]]:
+    """Resolve and strictly validate the checkpoint-promotion policy."""
+    if metrics_map is not None and not isinstance(metrics_map, Mapping):
+        raise ValueError("metrics map: expected a JSON object")
+    override = dict(metrics_map or {})
+    unknown = set(override) - _METRICS_MAP_KEYS
+    if unknown:
+        raise ValueError(f"metrics map: unknown keys {sorted(unknown)!r}")
+
+    weights = _exact_unit_mapping(
+        "vgs_weights",
+        override.get("vgs_weights", DEFAULT_METRICS_MAP["vgs_weights"]),
+        _WEIGHT_KEYS,
+    )
+    weight_sum = sum(weights.values())
+    if not math.isclose(weight_sum, 1.0, rel_tol=0.0, abs_tol=1e-9):
+        raise ValueError(
+            f"vgs_weights: values must sum to 1.0, got {weight_sum!r}"
+        )
+    rules = _exact_unit_mapping(
+        "regression_rules",
+        override.get("regression_rules", DEFAULT_METRICS_MAP["regression_rules"]),
+        _REGRESSION_RULE_KEYS,
+    )
+    return {"vgs_weights": weights, "regression_rules": rules}
 
 
 def card_to_metrics(
@@ -103,76 +185,94 @@ def card_to_metrics(
 ) -> tuple[ModelMetrics, MappingReport]:
     """Map an eval card onto ``ModelMetrics``.
 
-    Returns the metrics plus a report of any warnings (e.g. missing
-    invariance estimator). Raises ``ValueError`` on hard schema errors
-    (e.g. negative cost, missing required fields).
+    Returns the metrics plus a report of compatibility warnings. Raises
+    ``ValueError`` on hard schema errors, including missing gate-critical
+    invariance evidence.
     """
-    m = dict(DEFAULT_METRICS_MAP)
-    if metrics_map is not None:
-        m = {**m, **metrics_map}
+    m = _validated_metrics_map(metrics_map)
     weights = m["vgs_weights"]
     regression_rules = m["regression_rules"]
 
     warnings: list[str] = []
 
-    # ---- VGS composite ----
-    components = {
-        "processbench_overall": _to_float(
-            "processbench_overall", card.get("processbench_overall", 0.0)
-        ),
-        "mean_held_out_env_metric": _to_float(
-            "mean_held_out_env_metric", card.get("mean_held_out_env_metric", 0.0)
-        ),
-        "bon_accuracy": _to_float("bon_accuracy", card.get("bon_accuracy", 0.0)),
-    }
-    if card.get("mean_held_out_env_metric") is None:
-        held_out = card.get("held_out_envs") or {}
-        if isinstance(held_out, dict) and held_out:
-            components["mean_held_out_env_metric"] = _mean(
-                [_to_float(k, v) for k, v in held_out.items()]
-            )
+    model_id = card.get("model_id")
+    if not isinstance(model_id, str) or not model_id.strip():
+        raise ValueError("missing required gate field: model_id")
 
-    weight_sum = sum(weights.values())
-    if not (0.99 <= weight_sum <= 1.01):
-        warnings.append(
-            f"vgs_weights sum to {weight_sum:.4f}, expected 1.0; "
-            "vgs will be unnormalised."
+    # ---- VGS composite ----
+    held_out = card.get("held_out_envs")
+    if held_out is not None and not isinstance(held_out, dict):
+        raise ValueError("held_out_envs: expected an object of unit-valued metrics")
+    held_out_values = (
+        [_to_unit_float(str(name), value) for name, value in held_out.items()]
+        if held_out
+        else []
+    )
+    mean_held_out_raw = card.get("mean_held_out_env_metric")
+    if mean_held_out_raw is None:
+        if not held_out_values:
+            raise ValueError(
+                "missing required gate field: mean_held_out_env_metric or held_out_envs"
+            )
+        mean_held_out = _mean(held_out_values)
+    else:
+        mean_held_out = _to_unit_float(
+            "mean_held_out_env_metric", mean_held_out_raw
         )
+        if held_out_values and not math.isclose(
+            mean_held_out,
+            _mean(held_out_values),
+            rel_tol=0.0,
+            abs_tol=1e-9,
+        ):
+            raise ValueError(
+                "mean_held_out_env_metric disagrees with the recomputed "
+                "mean of held_out_envs"
+            )
+    components = {
+        "processbench_overall": _to_unit_float(
+            "processbench_overall", _required(card, "processbench_overall")
+        ),
+        "mean_held_out_env_metric": mean_held_out,
+        "bon_accuracy": _to_unit_float(
+            "bon_accuracy", _required(card, "bon_accuracy")
+        ),
+    }
+
     vgs_value = sum(components[name] * weight for name, weight in weights.items())
 
     # ---- hack_risk from invariance violation rate ----
     inv = card.get("invariance_violation_rate")
     if inv is None:
-        warnings.append(
-            "card has no `invariance_violation_rate`; using hack_risk=0.0. "
-            "Run vlabs-prm-eval's invariance harness to populate it; the "
-            "gate cannot detect shortcuts without it."
+        raise ValueError(
+            "missing required gate field: invariance_violation_rate; "
+            "shortcut risk is inconclusive until the invariance harness runs"
         )
-        hack_risk = 0.0
-    else:
-        hack_risk = _to_float("invariance_violation_rate", inv)
+    hack_risk = _to_unit_float("invariance_violation_rate", inv)
 
     # ---- calibration ← coverage ----
-    calibration = _to_float("coverage", card.get("coverage", 0.0))
+    calibration = _to_unit_float("coverage", _required(card, "coverage"))
 
     # ---- ood ← mean of held_out_envs ----
-    held_out = card.get("held_out_envs") or {}
-    if isinstance(held_out, dict) and held_out:
-        ood = _mean([_to_float(k, v) for k, v in held_out.items()])
-    else:
-        ood = components["mean_held_out_env_metric"]
+    ood = (
+        _mean(held_out_values)
+        if held_out_values
+        else components["mean_held_out_env_metric"]
+    )
 
     # ---- cost / latency ----
     cost = (
         cost_override
         if cost_override is not None
-        else _to_float("cost", card.get("cost", 0.0))
+        else _to_nonnegative_float("cost", _required(card, "cost"))
     )
     latency = (
         latency_override
         if latency_override is not None
-        else _to_float("latency", card.get("latency", 0.0))
+        else _to_nonnegative_float("latency", _required(card, "latency"))
     )
+    cost = _to_nonnegative_float("cost", cost)
+    latency = _to_nonnegative_float("latency", latency)
 
     # ---- regression flag ----
     pb = components["processbench_overall"]
@@ -217,26 +317,31 @@ def evaluate_gate(
     if metrics_map_path is not None:
         with open(metrics_map_path, encoding="utf-8") as f:
             metrics_map = json.load(f)
+    validated_metrics_map = _validated_metrics_map(metrics_map)
 
     old_card = EvalCard.load(old_card_path)
     new_card = EvalCard.load(new_card_path)
 
     old, report_old = card_to_metrics(
-        old_card, metrics_map, cost_override=cost_old, latency_override=latency_old
+        old_card,
+        validated_metrics_map,
+        cost_override=cost_old,
+        latency_override=latency_old,
     )
     new, report_new = card_to_metrics(
-        new_card, metrics_map, cost_override=cost_new, latency_override=latency_new
+        new_card,
+        validated_metrics_map,
+        cost_override=cost_new,
+        latency_override=latency_new,
     )
 
     warnings = [*report_old.warnings, *report_new.warnings]
 
     # Re-derive regression using the OLD bon_accuracy too (the rule
     # requires lift vs the previous checkpoint).
-    rules = DEFAULT_METRICS_MAP["regression_rules"]
-    if metrics_map is not None and "regression_rules" in metrics_map:
-        rules = metrics_map["regression_rules"]
-    old_bon = _to_float("bon_accuracy", old_card.get("bon_accuracy", 0.0))
-    new_bon = _to_float("bon_accuracy", new_card.get("bon_accuracy", 0.0))
+    rules = validated_metrics_map["regression_rules"]
+    old_bon = _to_unit_float("bon_accuracy", _required(old_card, "bon_accuracy"))
+    new_bon = _to_unit_float("bon_accuracy", _required(new_card, "bon_accuracy"))
     bon_lift = new_bon - old_bon
     if bon_lift < rules["bon_lift_min"]:
         new = ModelMetrics(

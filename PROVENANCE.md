@@ -1,12 +1,11 @@
 # Provenance
 
-Clean import (no history rewrite) from `verifiablelabs/verifiable-labs-envs`
-at commit `762b44e8019af3e89c55bba0f88e9157bb50c5c3` (main). Mirrored paths: `src/verifiable_labs_envs/{providers,schemas,formal_spec,run_config.py}`, `tests/sdk/`, `tools/vlabs-prm-eval/` (clean-gate CLI).
+Clean import (no history rewrite) from the archived legacy workspace at commit
+`762b44e8019af3e89c55bba0f88e9157bb50c5c3`. Imported paths covered the
+provider/schema/formal-spec/run-config surface, SDK tests, and clean-gate CLI.
 
-The source monorepo remains canonical until the split flips; this mirror is
-refreshed by the migration tooling documented in
-`verifiable-labs-private/docs/ops/github-repo-split-migration.md`.
+`vlabs-sdk` is now canonical for this public surface.
 
-The import namespace is remapped during staging: the canonical
-`verifiable_labs_envs` subset ships here as `vlabs_sdk` (CLI: `vlabs`).
-See MIGRATION.md.
+The imported namespace was remapped to `vlabs_sdk` (CLI: `vlabs`) so it can be
+installed alongside historical environments without a collision. See
+MIGRATION.md.

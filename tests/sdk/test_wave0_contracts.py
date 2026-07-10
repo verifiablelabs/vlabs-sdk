@@ -116,6 +116,43 @@ def test_contract_from_sources_hashes_inputs() -> None:
     assert c.to_dict()["risk_tier"] == "high"
 
 
+def test_assurance_card_v2_loads_legacy_public_artifact_shape() -> None:
+    """Published pre-canonical v2 cards remain readable during the migration."""
+    card = AssuranceCardV2.from_dict(
+        {
+            "_comment": "ILLUSTRATIVE synthetic public artifact",
+            "card_version": "v2",
+            "run_id": "run_example",
+            "org": "REDACTED",
+            "agent": "REDACTED",
+            "scores": {"public": 0.77, "hidden": 0.70, "ood": 0.66},
+            "contamination": {"dcr": 0.05},
+            "clean_vgs": {"baseline": 0.55, "candidate": 0.59},
+            "gate": {"outcome": "LIMITED_ROLLOUT", "reasons": ["ood_regressed"]},
+            "formal_claim": FORMAL_CLAIM,
+        }
+    )
+    assert card.decision == "LIMITED_ROLLOUT"
+    assert card.public_score == pytest.approx(0.77)
+    assert card.dcr == pytest.approx(0.05)
+    assert card.clean_vgs == pytest.approx(0.59)
+    assert card.reject_reasons == ("ood_regressed",)
+    assert card.metadata["legacy_v2_shape"] is True
+
+
+def test_assurance_card_rejects_drifted_formal_scope() -> None:
+    with pytest.raises(ValueError, match="formal_scope"):
+        AssuranceCardV2(
+            card_version="v2",
+            run_id="run_example",
+            agent_id=None,
+            baseline_id=None,
+            candidate_id=None,
+            decision="ACCEPT",
+            formal_scope="not the vetted claim",
+        )
+
+
 # ── results + transfer ──
 def test_scoreset_bounds_and_transfer() -> None:
     s = ScoreSet(

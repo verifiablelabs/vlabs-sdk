@@ -1,8 +1,8 @@
 {
   "model_id": "qwen-2.5-1.5b-grpo-clean-reject-dcr",
   "vgs": 0.78,
-  "contamination_risk": 0.5,
-  "clean_vgs": 0.62,
+  "contamination_risk": 0.13,
+  "clean_vgs": 0.6136,
   "public_score": 0.85,
   "hidden_score": 0.78,
   "ood_score": 0.72,

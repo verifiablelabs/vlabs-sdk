@@ -6,4 +6,4 @@ monorepo (see PROVENANCE.md) with the import namespace remapped from
 ``verifiable_labs_envs`` to ``vlabs_sdk``; see MIGRATION.md.
 """
 
-__version__ = "0.0.2"
+__version__ = "0.0.3"

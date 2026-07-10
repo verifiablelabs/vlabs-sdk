@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling>=1.24,<1.27"]
+requires = ["hatchling==1.27.0"]
 build-backend = "hatchling.build"
 
 [project]
@@ -28,8 +28,8 @@ classifiers = [
 ]
 dependencies = [
     "typer>=0.12",
-    # The gate subcommand reuses the formally-verified Python mirror
-    # of AcceptUpdate from the main package; pin loosely so dev installs
+    # The gate subcommand reuses the property-tested Python specification
+    # mirror of AcceptUpdate from the main package; pin loosely so dev installs
     # work against the editable monorepo checkout.
     "vlabs-sdk",
 ]

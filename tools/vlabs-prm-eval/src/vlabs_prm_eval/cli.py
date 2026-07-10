@@ -96,16 +96,21 @@ def gate(
     )] = None,
 ) -> None:
     tol = Tolerances(tau=tau, eps_h=eps_h, eps_c=eps_c, eps_o=eps_o, eps_k=eps_k, eps_l=eps_l)
-    decision, old_m, new_m, warnings = evaluate_gate(
-        old_card_path=old,
-        new_card_path=new,
-        tol=tol,
-        metrics_map_path=metrics_map,
-        cost_old=cost_old,
-        cost_new=cost_new,
-        latency_old=latency_old,
-        latency_new=latency_new,
-    )
+    try:
+        decision, old_m, new_m, warnings = evaluate_gate(
+            old_card_path=old,
+            new_card_path=new,
+            tol=tol,
+            metrics_map_path=metrics_map,
+            cost_old=cost_old,
+            cost_new=cost_new,
+            latency_old=latency_old,
+            latency_new=latency_new,
+        )
+    except (OSError, ValueError) as exc:
+        typer.secho("== INCONCLUSIVE ==", fg=typer.colors.YELLOW, bold=True)
+        typer.echo(f"Missing or invalid gate evidence: {exc}")
+        raise typer.Exit(code=2) from exc
 
     for w in warnings:
         typer.secho(f"WARNING: {w}", fg=typer.colors.YELLOW, err=True)
@@ -215,21 +220,26 @@ def clean_gate(
         "--latency-new", help="Override new-card latency if not present in JSON.",
     )] = None,
 ) -> None:
-    tol = CleanTolerances(
-        tau=tau, eps_h=eps_h, eps_c=eps_c, eps_o=eps_o, eps_d=eps_d,
-        eps_k=eps_k, eps_l=eps_l,
-    )
-    decision, old_m, new_m, warnings = evaluate_clean_gate(
-        old_card_path=old,
-        new_card_path=new,
-        tol=tol,
-        beta=beta,
-        metrics_map_path=metrics_map,
-        cost_old=cost_old,
-        cost_new=cost_new,
-        latency_old=latency_old,
-        latency_new=latency_new,
-    )
+    try:
+        tol = CleanTolerances(
+            tau=tau, eps_h=eps_h, eps_c=eps_c, eps_o=eps_o, eps_d=eps_d,
+            eps_k=eps_k, eps_l=eps_l,
+        )
+        decision, old_m, new_m, warnings = evaluate_clean_gate(
+            old_card_path=old,
+            new_card_path=new,
+            tol=tol,
+            beta=beta,
+            metrics_map_path=metrics_map,
+            cost_old=cost_old,
+            cost_new=cost_new,
+            latency_old=latency_old,
+            latency_new=latency_new,
+        )
+    except (OSError, ValueError) as exc:
+        typer.secho("== INCONCLUSIVE ==", fg=typer.colors.YELLOW, bold=True)
+        typer.echo(f"Missing or invalid clean-gate evidence: {exc}")
+        raise typer.Exit(code=2) from exc
 
     for w in warnings:
         typer.secho(f"WARNING: {w}", fg=typer.colors.YELLOW, err=True)

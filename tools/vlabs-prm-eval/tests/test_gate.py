@@ -105,22 +105,87 @@ def test_card_to_metrics_default_mapping():
     assert report.warnings == ()
 
 
-def test_card_to_metrics_missing_invariance_warns():
-    """Missing ``invariance_violation_rate`` defaults hack_risk=0.0 with a warning."""
+def test_card_to_metrics_rejects_asserted_held_out_mean_that_disagrees_with_rows():
     import json
-    import tempfile
+
+    raw = json.loads((FIXTURES / "card_old.json").read_text())
+    assert raw["held_out_envs"]
+    raw["mean_held_out_env_metric"] = 0.01
+
+    with pytest.raises(ValueError, match="mean_held_out_env_metric.*held_out_envs"):
+        card_to_metrics(EvalCard(raw=raw))
+
+
+def test_card_to_metrics_missing_invariance_is_inconclusive():
+    """Missing shortcut evidence must never be converted into ideal hack risk."""
+    import json
 
     raw = json.loads((FIXTURES / "card_old.json").read_text())
     raw.pop("invariance_violation_rate")
-    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
-        json.dump(raw, f)
-        path = Path(f.name)
-    try:
-        metrics, report = card_to_metrics(EvalCard.load(path))
-        assert metrics.hack_risk == 0.0
-        assert any("invariance_violation_rate" in w for w in report.warnings)
-    finally:
-        path.unlink()
+    with pytest.raises(ValueError, match="missing required gate field.*invariance"):
+        card_to_metrics(EvalCard(raw=raw))
+
+
+def test_gate_cli_missing_invariance_exits_inconclusive(tmp_path):
+    import json
+
+    raw = json.loads((FIXTURES / "card_new_accept.json").read_text())
+    raw.pop("invariance_violation_rate")
+    card = tmp_path / "missing-invariance.json"
+    card.write_text(json.dumps(raw))
+
+    result = _runner().invoke(app, ["gate", "--old", str(OLD), "--new", str(card)])
+    assert result.exit_code == 2
+    assert "INCONCLUSIVE" in result.stdout
+    assert "invariance_violation_rate" in result.stdout
+    assert "ACCEPT" not in result.stdout
+
+
+@pytest.mark.parametrize(
+    ("missing", "also_remove"),
+    [
+        ("processbench_overall", None),
+        ("bon_accuracy", None),
+        ("coverage", None),
+        ("cost", None),
+        ("latency", None),
+        ("mean_held_out_env_metric", "held_out_envs"),
+    ],
+)
+def test_gate_cli_missing_gate_dimension_is_inconclusive(
+    tmp_path, missing, also_remove
+):
+    import json
+
+    raw = json.loads((FIXTURES / "card_new_accept.json").read_text())
+    raw.pop(missing)
+    if also_remove is not None:
+        raw.pop(also_remove, None)
+    card = tmp_path / f"missing-{missing}.json"
+    card.write_text(json.dumps(raw))
+
+    result = _runner().invoke(app, ["gate", "--old", str(OLD), "--new", str(card)])
+    assert result.exit_code == 2
+    assert "INCONCLUSIVE" in result.stdout
+    assert "ACCEPT" not in result.stdout
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("processbench_overall", 1.01),
+        ("bon_accuracy", -0.01),
+        ("coverage", float("nan")),
+        ("invariance_violation_rate", float("inf")),
+    ],
+)
+def test_gate_unit_metrics_reject_out_of_range_or_nonfinite(field, value):
+    import json
+
+    raw = json.loads((FIXTURES / "card_old.json").read_text())
+    raw[field] = value
+    with pytest.raises(ValueError, match=field):
+        card_to_metrics(EvalCard(raw=raw))
 
 
 def test_evaluate_gate_returns_decision_old_new_warnings():
@@ -174,6 +239,69 @@ def test_metrics_map_override_changes_weights(tmp_path):
     )
     assert result.exit_code == 1
     assert REASON_VGS_GAIN_BELOW_TAU in result.stdout
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        {"vgs_weights": {"processbench_overall": -0.1,
+                         "mean_held_out_env_metric": 0.3, "bon_accuracy": 0.8}},
+        {"vgs_weights": {"processbench_overall": float("nan"),
+                         "mean_held_out_env_metric": 0.3, "bon_accuracy": 0.7}},
+        {"vgs_weights": {"processbench_overall": 0.5,
+                         "mean_held_out_env_metric": 0.5}},
+        {"vgs_weights": {"processbench_overall": 0.4,
+                         "mean_held_out_env_metric": 0.3, "bon_accuracy": 0.2}},
+        {"vgs_weights": {"processbench_overall": 0.4,
+                         "mean_held_out_env_metric": 0.3, "bon_accuracy": 0.3,
+                         "unknown_component": 0.0}},
+        {"regression_rules": {"processbench_min": -0.1, "bon_lift_min": 0.05,
+                              "coverage_target": 0.9, "coverage_tol": 0.05}},
+        {"regression_rules": {"processbench_min": 0.6,
+                              "bon_lift_min": float("inf"),
+                              "coverage_target": 0.9, "coverage_tol": 0.05}},
+        {"regression_rules": {"processbench_min": 0.6, "bon_lift_min": 0.05,
+                              "coverage_target": 0.9}},
+        {"regression_rules": {"processbench_min": 0.6, "bon_lift_min": 0.05,
+                              "coverage_target": 1.1, "coverage_tol": 0.05}},
+        {"regression_rules": {"processbench_min": 0.6, "bon_lift_min": 0.05,
+                              "coverage_target": 0.9, "coverage_tol": 0.05,
+                              "typo_rule": 0.0}},
+        {"vgs_weight": DEFAULT_METRICS_MAP["vgs_weights"]},
+    ],
+)
+def test_metrics_map_policy_rejects_malformed_overrides(override):
+    with pytest.raises(ValueError, match="metrics map|vgs_weights|regression_rules"):
+        card_to_metrics(EvalCard.load(OLD), override)
+
+
+def test_metrics_map_cli_malformed_policy_is_inconclusive(tmp_path):
+    import json
+
+    map_path = tmp_path / "bad-map.json"
+    map_path.write_text(
+        json.dumps(
+            {
+                "vgs_weights": {
+                    "processbench_overall": -1.0,
+                    "mean_held_out_env_metric": 1.0,
+                    "bon_accuracy": 1.0,
+                }
+            }
+        )
+    )
+    result = _runner().invoke(
+        app,
+        [
+            "gate",
+            "--old", str(OLD),
+            "--new", str(FIXTURES / "card_new_accept.json"),
+            "--metrics-map", str(map_path),
+        ],
+    )
+    assert result.exit_code == 2
+    assert "INCONCLUSIVE" in result.stdout
+    assert "ACCEPT" not in result.stdout
 
 
 # =====================================================================

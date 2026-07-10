@@ -2,19 +2,24 @@ name: CI
 on:
   push: { branches: [main] }
   pull_request: { branches: [main] }
+permissions:
+  contents: read
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with: { persist-credentials: false }
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with: { python-version: "3.12" }
       - name: install sdk + clean-gate tool (--no-deps keeps the tool's vlabs-sdk dependency on this checkout)
         run: |
-          pip install -e ".[dev]"
-          pip install --no-deps -e tools/vlabs-prm-eval
-      - run: ruff check src tests tools/vlabs-prm-eval/src
-      - run: pytest
+          python -m pip install --disable-pip-version-check --no-deps pip==26.1.2
+          python -m pip install --require-hashes -r .github/requirements-ci.lock
+          python -m pip install --no-deps --no-build-isolation -e .
+          python -m pip install --no-deps --no-build-isolation -e tools/vlabs-prm-eval
+      - run: python -m ruff check src tests tools/vlabs-prm-eval/src tools/vlabs-prm-eval/tests
+      - run: python -m pytest
       - name: import smoke (wheel namespace)
         run: python -c "import vlabs_sdk; from vlabs_sdk.providers.dummy_provider import DummyProvider; from vlabs_sdk.schemas import FORMAL_CLAIM"
       - name: clean-gate CLI smoke (accept=0 / reject=1)
@@ -23,11 +28,12 @@ jobs:
           vlabs clean-gate --old tests/fixtures/clean/clean_old.json --new tests/fixtures/clean/clean_new_accept.json
           if vlabs clean-gate --old tests/fixtures/clean/clean_old.json --new tests/fixtures/clean/clean_reject_dcr.json; then exit 1; fi
       - name: build wheel + sdist
-        run: pip install build && python -m build
+        run: python -m build --no-isolation
       - name: built-wheel CLI smoke in a clean venv (Option A — vlabs ships with vlabs-sdk)
         run: |
-          python -m venv /tmp/wv
-          /tmp/wv/bin/pip install dist/*.whl
+          python -m venv --without-pip /tmp/wv
+          python -m pip --python /tmp/wv install --require-hashes -r .github/requirements-ci.lock
+          python -m pip --python /tmp/wv install --no-deps dist/*.whl
           /tmp/wv/bin/python -c "import vlabs_sdk; import vlabs_prm_eval; from vlabs_sdk.providers.dummy_provider import DummyProvider"
           /tmp/wv/bin/vlabs --help
           cd tools/vlabs-prm-eval

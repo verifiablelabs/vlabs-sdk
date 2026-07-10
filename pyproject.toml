@@ -1,10 +1,10 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling==1.27.0"]
 build-backend = "hatchling.build"
 
 [project]
 name = "vlabs-sdk"
-version = "0.0.2"
+version = "0.0.3"
 description = "SDK contracts and clean promotion-gate CLI for Verifiable Labs: run modes, model-provider interface, typed schemas, and a property-tested formal-spec mirror."
 readme = "README.md"
 license = "Apache-2.0"
