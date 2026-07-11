@@ -1,6 +1,6 @@
 build>=1.2
 editables==0.5
-hatchling==1.27.0
+hatchling==1.31.0
 hypothesis>=6.100
 pytest>=8
 ruff>=0.6
